@@ -9,6 +9,7 @@ import time
 import subprocess
 import sys
 
+
 faceMap = {}
 
 def get_args():
@@ -39,9 +40,9 @@ def capturePicture():
     print("Capturing picture...")
     subprocess.call (["fswebcam","-r", "640x480", "image.jpg"])
 
-def makePollyWelcome(identifiedPerson):
+def makePollyWelcome(identifiedPerson, emotion):
     print ("Speaking...")
-    speak = "Hi "+identifiedPerson+", how are you doing today?"
+    speak = "Hi "+identifiedPerson+", you look "+ emotion+" today"
     
     polly = boto3.client('polly')
     response = polly.synthesize_speech(
@@ -59,6 +60,8 @@ def makePollyWelcome(identifiedPerson):
     print("played")
 
 if __name__ == '__main__':
+    faceid = ""
+    confidence = 0.0
     load_table_values()
     print ("Starting ...")
     args = get_args()
@@ -68,18 +71,33 @@ if __name__ == '__main__':
         capturePicture()
         try: 
             with open("image.jpg", 'rb') as image:
+                image_bytes = image.read()
+                
                 print ("Searching faces ...")
-                response = client.search_faces_by_image(Image={'Bytes': image.read()}, CollectionId=args.collection)
-                faceid = response["FaceMatches"][0]["Face"]["FaceId"]
-                confidence = response["FaceMatches"][0]["Face"]["Confidence"]
-            
+                response = client.search_faces_by_image(Image={'Bytes': image_bytes}, CollectionId=args.collection)
+                #print (response)
+                faceid = json.dumps(response["FaceMatches"][0]["Face"]["FaceId"])
+                faceid = faceid.replace("\"", "")
+                confidence = json.dumps(response["FaceMatches"][0]["Face"]["Confidence"])
+                print ("Confidence is " + confidence)
+                
+                
                 global faceMap
                 if (confidence > 80 and faceid is not None):
-                    print ("Finding name")
+                    #print ("Finding name for "+faceid)
                     identifiedPerson = faceMap[str(faceid)]
-                
-                    print json.dumps(identifiedPerson + " "+ str(confidence))
-                    makePollyWelcome(identifiedPerson)
+                    print (identifiedPerson + " "+ str(confidence))
+                    
+                    
+                    #Trying to get emotion
+                    print ("Getting facial emotion")
+                    response1 = client.detect_faces(Image={'Bytes': image_bytes},Attributes=["ALL"])
+                    print (response1)
+                    emotion = json.dumps(response1["FaceDetails"][0]["Emotions"][0]["Type"])
+                    print (emotion)
+                    
+                    
+                    makePollyWelcome(identifiedPerson, emotion)
                     print ("Done")
         except:
             print("Face detection error:", sys.exc_info()[0])
